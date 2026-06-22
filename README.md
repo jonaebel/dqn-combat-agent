@@ -4,21 +4,21 @@ A from-scratch neural network and Deep Q-Network (DQN) implementation in Java 21
 
 ## Background
 
-This repository is an isolated extraction of the ML/AI subsystem from a Java-based online Pokémon-style 2D battle game. The goal is to train an AI opponent using reinforcement learning: two agents, both driven by the same network, compete against each other in self-play and learn the game from experience.
+This repository is an isolated extraction of the ML/AI subsystem from a Java-based online Pokémon-style 2D battle game. The goal is to train an AI opponent using reinforcement learning: two agents, each with their own independent network, compete against each other in self-play and learn the game from experience.
 
 ## Limitations & Future Work
 
-The current training regime transitions from random-opponent pre-training (Phase 1) to symmetric self-play (Phase 2). While self-play is a powerful paradigm in principle, applying it with a single shared network introduces a fundamental circularity: both agents improve at exactly the same rate, which causes their win rates to converge and stabilise around 50 % regardless of the absolute skill level reached. The training signal in Phase 2 therefore carries little directional information.
+The current training regime transitions from random-opponent pre-training (Phase 1) to symmetric self-play (Phase 2). While self-play is a powerful paradigm in principle, applying it with two simultaneously learning agents introduces a fundamental instability: both agents update their policies at every episode, so neither ever faces a stable target. Each improvement made by one agent immediately changes the environment the other agent is optimising against. The training signal in Phase 2 therefore carries little directional information, a Strategie that was optimal yesterday may not be optimal today.
 
-A more effective approach, analogous to the methodology employed in AlphaGo, would be to train each agent against a periodically frozen snapshot of itself rather than its current live counterpart. By lagging one agent by a fixed number of episodes (e.g. 1 000), the opponent presents a slightly different Strategie, breaking the symmetry and providing a non-trivial learning signal. Implementing this requires a model checkpoint and serialisation system, which has not yet been added to the framework.
+This is distinct from a weight-sharing problem: `agent_a` and `agent_b` are fully independent networks with separate weights, replay buffers, and target networks. The instability is the result of two compounding factors: the moving-target nature of concurrent learning, and the synchronized target network updates. DQN uses a lagged target network specifically to provide a stable learning anchor. However, since both target networks are synced simultaneously every 10 episodes, any relative advantage one agent has built up is cancelled out at each sync point, both anchors advance in lockstep, and neither agent ever consolidates a meaningful lead.
+
+A more effective approach, analogous to the methodology employed in AlphaGo, would be to train each agent against a periodically frozen snapshot of itself rather than its current live counterpart. By lagging one agent by a fixed number of episodes (e.g. 1 000), the opponent presents a stable Strategie for long enough to provide a meaningful gradient signal. Implementing this requires a model checkpoint and serialisation system, which has not yet been added to the framework.
 
 ![phase1.png](assets/phase1.png)
 
 ![phase2.png](assets/phase2.png)
 
-As the plots illustrate, the moving average of the win rate rises steadily during Phase 1, indicating genuine Strategie improvement against the random baseline. In Phase 2, the moving average plateaus and both agents' win rates converge around 50 %, consistent with the symmetry argument above, neither agent can pull ahead of an opponent that mirrors its own learning trajectory.
-
-This also exposes a deeper tautological issue with the Phase 2 setup: because exactly one agent wins each episode, the combined win rate of both agents always sums to 100 %. Since both agents share the same network and backpropagate through it simultaneously, every gradient update that benefits one agent is immediately reflected in its opponent. The network is therefore always "winning" in aggregate, yet also always losing by the same margin, leaving the net weight update near zero and the model at a training standstill. The second plot is a direct visualisation of this stalemate.
+As the plots illustrate, the moving average of the win rate rises steadily during Phase 1, indicating genuine Strategie improvement against the random baseline. In Phase 2, the moving average plateaus and both agents' win rates converge around 50 %, consistent with the combined instability described above, neither agent can pull ahead of an opponent that is learning and synchronising at exactly the same pace.
 
 ## Project Structure
 
@@ -92,7 +92,7 @@ Q-values for 6 actions (attack ×4, switch ×2)
 Two-phase training, 5 000 episodes each:
 
 1. **Phase 1 — vs Random:** Agent A learns; Agent B acts randomly (`ε = 1.0`). Lets A discover basic combat strategy without a moving target.
-2. **Phase 2 — Self-Play:** Both agents learn against each other, sharing the same network architecture.
+2. **Phase 2 — Self-Play:** Both agents learn against each other, each with an independent network, replay buffer, and target network.
 
 **DQN components:**
 - Double DQN: separate online and target networks, synced every `sync_every` episodes
