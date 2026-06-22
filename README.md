@@ -113,3 +113,4 @@ This framework was built for a Java-based online 2D battle game currently in ear
 </p>
 
 We are a team of four. The ML and math subsystems were designed and implemented by [Peer Grunow](https://github.com/PeerGrunow) and [Jonathan Ebel](https://github.com/jonaebel).
+The other two in our Development team for the game are Christoph Schindler and Elwin Schwabenland
