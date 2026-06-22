@@ -10,15 +10,15 @@ This repository is an isolated extraction of the ML/AI subsystem from a Java-bas
 
 The current training regime transitions from random-opponent pre-training (Phase 1) to symmetric self-play (Phase 2). While self-play is a powerful paradigm in principle, applying it with a single shared network introduces a fundamental circularity: both agents improve at exactly the same rate, which causes their win rates to converge and stabilise around 50 % regardless of the absolute skill level reached. The training signal in Phase 2 therefore carries little directional information.
 
-A more effective approach — analogous to the methodology employed in AlphaGo — would be to train each agent against a periodically frozen snapshot of itself rather than its current live counterpart. By lagging one agent by a fixed number of episodes (e.g. 1 000), the opponent presents a slightly different policy, breaking the symmetry and providing a non-trivial learning signal. Implementing this requires a model checkpoint and serialisation system, which has not yet been added to the framework.
+A more effective approach, analogous to the methodology employed in AlphaGo, would be to train each agent against a periodically frozen snapshot of itself rather than its current live counterpart. By lagging one agent by a fixed number of episodes (e.g. 1 000), the opponent presents a slightly different Strategie, breaking the symmetry and providing a non-trivial learning signal. Implementing this requires a model checkpoint and serialisation system, which has not yet been added to the framework.
 
 ![phase1.png](assets/phase1.png)
 
 ![phase2.png](assets/phase2.png)
 
-As the plots illustrate, the moving average of the win rate rises steadily during Phase 1, indicating genuine policy improvement against the random baseline. In Phase 2, the moving average plateaus and both agents' win rates converge around 50 %, consistent with the symmetry argument above — neither agent can pull ahead of an opponent that mirrors its own learning trajectory.
+As the plots illustrate, the moving average of the win rate rises steadily during Phase 1, indicating genuine Strategie improvement against the random baseline. In Phase 2, the moving average plateaus and both agents' win rates converge around 50 %, consistent with the symmetry argument above, neither agent can pull ahead of an opponent that mirrors its own learning trajectory.
 
-This also exposes a deeper tautological issue with the Phase 2 setup: because exactly one agent wins each episode, the combined win rate of both agents always sums to 100 %. Since both agents share the same network and backpropagate through it simultaneously, every gradient update that benefits one agent is immediately reflected in its opponent. The network is therefore always "winning" in aggregate — yet also always losing by the same margin — leaving the net weight update near zero and the model at a training standstill. The second plot is a direct visualisation of this stalemate.
+This also exposes a deeper tautological issue with the Phase 2 setup: because exactly one agent wins each episode, the combined win rate of both agents always sums to 100 %. Since both agents share the same network and backpropagate through it simultaneously, every gradient update that benefits one agent is immediately reflected in its opponent. The network is therefore always "winning" in aggregate, yet also always losing by the same margin, leaving the net weight update near zero and the model at a training standstill. The second plot is a direct visualisation of this stalemate.
 
 ## Project Structure
 
