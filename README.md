@@ -6,7 +6,9 @@ A from-scratch neural network and Deep Q-Network (DQN) implementation in Java 21
 
 This repository is an isolated extraction of the ML/AI subsystem from a Java-based online Pokémon-style 2D battle game. The goal is to train an AI opponent using reinforcement learning: two agents, each with their own independent network, compete against each other in self-play and learn the game from experience.
 
-## Limitations & Future Work
+> [!WARNING]
+> The section below describes a structural training issue that we are  **actively working on**. The current implementation does not fully reflect the problem as described treat this as semi-current evaluation of our training method.
+## Limitations & Future Work 
 
 The current training regime transitions from random-opponent pre-training (Phase 1) to symmetric self-play (Phase 2). While self-play is a powerful paradigm in principle, applying it with two simultaneously learning agents introduces a fundamental instability: both agents update their policies at every episode, so neither ever faces a stable target. Each improvement made by one agent immediately changes the environment the other agent is optimising against. The training signal in Phase 2 therefore carries little directional information, a Strategie that was optimal yesterday may not be optimal today.
 
