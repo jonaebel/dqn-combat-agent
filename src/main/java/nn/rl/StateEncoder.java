@@ -184,12 +184,12 @@ public class StateEncoder {
         NeuronalNetwork target_a = new NeuronalNetwork(structure, INPUT_SIZE, activations);
         NeuronalNetwork target_b = new NeuronalNetwork(structure, INPUT_SIZE, activations);
 
-        Gym gym = new Gym(agent_a, agent_b, target_a, target_b, TEAM_SIZE, 1000);
+        Gym gym = new Gym(agent_a, agent_b, target_a, target_b, TEAM_SIZE, 1000, structure, INPUT_SIZE, activations);
 
         System.out.println("Phase 1: Agent A learns vs random opponent");
         gym.run(5000, 32, 0.001, 0.99, 10, false);
 
         System.out.println("Phase 2: Self-play — both agents learn together");
-        gym.run(5000, 32, 0.001, 0.99, 10, true);
+        gym.run(10000, 32, 0.001, 0.99, 10, true);
     }
 }
