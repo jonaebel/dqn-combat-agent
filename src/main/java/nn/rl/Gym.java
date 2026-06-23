@@ -2,6 +2,7 @@ package nn.rl;
 
 import nn.core.NeuronalNetwork;
 import nn.core.ReplayBuffer;
+import nn.math.activationFunctions.ActivationFunction;
 import nn.math.lossFunctions.Huber;
 
 import java.util.ArrayList;
@@ -19,12 +20,13 @@ import java.util.Random;
    4-5  switch to bench fighter 0 or 1
 
  Training modes:
-   self_play = false  — only agent A learns; B acts randomly (epsilon_b = 1.0)
-   self_play = true   — both agents learn against each other
+   self_play = false  — only agent A learns; opponents come from the pool
+   self_play = true   — both agents learn; pool opponents are mixed in for diversity
 
  Key DQN components used:
    - epsilon-greedy exploration with exponential decay
-   - separate target network (synced every `sync_every` episodes)
+   - separate target network (synced every `sync_every` episodes)  ← DQN concept
+   - opponent pool of historical snapshots (AlphaGo-style)          ← separate concept
    - experience replay via ReplayBuffer
    - Huber loss for stable Q-value regression
 */
@@ -32,8 +34,8 @@ public class Gym {
 
     private final NeuronalNetwork agent_a;
     private final NeuronalNetwork agent_b;
-    private final NeuronalNetwork target_a;
-    private final NeuronalNetwork target_b;
+    private NeuronalNetwork target_a;
+    private NeuronalNetwork target_b;
 
     private static final Random RANDOM = new Random();
     private final CombatEnvironment env;
@@ -41,9 +43,19 @@ public class Gym {
     private final ReplayBuffer buffer_b;
     private final int TEAM_SIZE;
 
+    // Network architecture — needed to clone snapshots into the pool
+    private final int[] structure;
+    private final int inputSize;
+    private final ActivationFunction[] activations;
+
+    // Opponent pool: historical snapshots of past agents (AlphaGo-style)
+    private final List<NeuronalNetwork> opponentPool = new ArrayList<>();
+    private static final int MAX_POOL_SIZE = 20;
+
     public Gym(NeuronalNetwork agent_a, NeuronalNetwork agent_b,
                NeuronalNetwork target_a, NeuronalNetwork target_b,
-               int team_size, int buffer_capacity) {
+               int team_size, int buffer_capacity,
+               int[] structure, int inputSize, ActivationFunction[] activations) {
         this.agent_a = agent_a;
         this.agent_b = agent_b;
         this.target_a = target_a;
@@ -54,6 +66,16 @@ public class Gym {
         this.env = new CombatEnvironment(team_size);
         this.buffer_a = new ReplayBuffer(buffer_capacity);
         this.buffer_b = new ReplayBuffer(buffer_capacity);
+        this.structure   = structure;
+        this.inputSize   = inputSize;
+        this.activations = activations;
+    }
+
+    /** Erstellt einen eingefrorenen Snapshot eines Agenten für den Pool. */
+    private NeuronalNetwork makeSnapshot(NeuronalNetwork source) {
+        NeuronalNetwork snap = new NeuronalNetwork(structure, inputSize, activations);
+        snap.copy_weights_from(source);
+        return snap;
     }
 
     public static boolean game_over(Fighter[] team) {
@@ -217,26 +239,50 @@ public class Gym {
                     int sync_every, boolean self_play) {
         double reward_sum = 0;
         double epsilon = 1.0;
-        final double epsilon_min   = 0.05;
-        final double epsilon_decay = 0.995;
+        final double EPSILON_MIN   = 0.05;
+        final double EPSILON_DECAY = 0.995;
 
         for (int episode = 0; episode < episodes; episode++) {
-            epsilon = Math.max(epsilon_min, epsilon * epsilon_decay);
-            double epsilonB = self_play ? epsilon : 1.0;
+            epsilon = Math.max(EPSILON_MIN, epsilon * EPSILON_DECAY);
 
-            reward_sum += run_episode(agent_a, agent_b, TEAM_SIZE, epsilon, epsilonB);
+            // --- Gegnerauswahl ---
+            // Pool-Mitglieder sind eingefroren → spielen greedy (epsilon = 0 -> keine varianz oder neues ausprobieren).
+            // Ist der Pool noch leer, fällt es auf agent_b zurück (random oder lernend).
+            NeuronalNetwork opponent;
+            double epsilonB;
+            if (!opponentPool.isEmpty()) {
+                opponent = opponentPool.get(RANDOM.nextInt(opponentPool.size()));
+                epsilonB = 0.0;
+            } else {
+                opponent = agent_b;
+                epsilonB = self_play ? epsilon : 1.0;
+            }
+            boolean vsPool = opponent != agent_b;
+
+            // --- Episode ---
+            reward_sum += run_episode(agent_a, opponent, TEAM_SIZE, epsilon, epsilonB);
+
+            // --- Training ---
             train_step(agent_a, target_a, buffer_a, batch_size, lr, gamma);
-            if (self_play) train_step(agent_b, target_b, buffer_b, batch_size, lr, gamma);
+            // agent_b nur trainieren wenn er wirklich gespielt hat (kein eingefrorenes Pool-Mitglied)
+            if (self_play && !vsPool)
+                train_step(agent_b, target_b, buffer_b, batch_size, lr, gamma);
 
+            // --- Target-Netze synchronisieren (DQN-Konzept, unabhängig vom Pool) ---
             if (episode % sync_every == 0) {
                 target_a.copy_weights_from(agent_a);
                 if (self_play) target_b.copy_weights_from(agent_b);
             }
 
+            // --- Pool befüllen + Logging alle 100 Episoden ---
             if (episode % 100 == 0 && episode > 0) {
-                String mode = self_play ? "Self-Play" : "vs Random";
-                System.out.printf("Episode %d | %s | Win-Rate: %.1f%% | Epsilon: %.3f%n",
-                        episode, mode, reward_sum, epsilon);
+                opponentPool.add(makeSnapshot(agent_a));
+                if (self_play) opponentPool.add(makeSnapshot(agent_b));
+                while (opponentPool.size() > MAX_POOL_SIZE) opponentPool.remove(0);
+
+                String mode = self_play ? "Self-Play+Pool" : "vs Pool";
+                System.out.printf("Episode %d | %s | Win-Rate: %.1f%% | Epsilon: %.3f | Pool: %d%n",
+                        episode, mode, reward_sum, epsilon, opponentPool.size());
                 reward_sum = 0;
             }
         }
